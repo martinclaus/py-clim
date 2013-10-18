@@ -80,79 +80,64 @@ def arrow_plot(axes, x, y, latlon=False, narrs=30, dspace=0.5, direc='pos', \
     '''
 
     # r is the distance spanned between pairs of points
+    if len(x) == 1:
+        return
     r = [0]
+    rtot = [0]
     for i in range(1, len(x)):
         dx = x[i] - x[i - 1]
         dy = y[i] - y[i - 1]
         r.append(np.sqrt(dx * dx + dy * dy))
+        rtot.append(rtot[-1] + r[-1])
     r = np.array(r)
-
-    # rtot is a cumulative sum of r, it's used to save time
-    rtot = []
-    for i in range(len(r)):
-        rtot.append(r[0:i].sum())
-    rtot.append(r.sum())
+    rtot = np.array(rtot)
 
     # based on narrs set the arrow spacing
-    aspace = r.sum() / narrs
+    aspace = rtot[-1] / narrs
 
     if direc is 'neg':
-        dspace = -1. * abs(dspace)
+        dspace = -1. * abs(dspace) * aspace
     else:
-        dspace = abs(dspace)
+        dspace = abs(dspace) * aspace
 
-    arrowData = []  # will hold tuples of x,y,theta for each arrow
-    arrowPos = aspace * (dspace)  # current point on walk along data
-                                 # could set arrowPos to 0 if you want
-                                 # an arrow at the beginning of the curve
+    arrowPos = np.linspace(0, rtot[-1], narrs + 1) + dspace
+    arrowPos.sort()
 
-    ndrawn = 0
-    rcount = 1
-    while arrowPos < r.sum() and ndrawn < narrs:
-        x1, x2 = x[rcount - 1], x[rcount]
-        y1, y2 = y[rcount - 1], y[rcount]
-        da = arrowPos - rtot[rcount]
-        theta = np.arctan2((x2 - x1), (y2 - y1))
-        ax = np.sin(theta) * da + x1
-        ay = np.cos(theta) * da + y1
-        arrowData.append((ax, ay, theta))
-        ndrawn += 1
-        arrowPos += aspace
-        while arrowPos > rtot[rcount + 1]:
-            rcount += 1
-            if arrowPos > rtot[-1]:
+    idx = 0
+    for arr in range(narrs + 1):
+        # get index of the starting point of the line segment to
+        # put the arrow head on
+        for idx in range(idx, len(rtot) - 1)[:]:
+            if rtot[idx] <= arrowPos[arr] and rtot[idx + 1] >= arrowPos[arr]:
+                idx1 = idx
+                idx2 = idx1 + 1
                 break
+            else:
+                idx1 = -1
+        if idx1 < 0:  # no linesegment found
+            break
+        x1, x2 = x[idx1], x[idx2]
+        y1, y2 = y[idx1], y[idx2]
+        ds = arrowPos[arr] - rtot[idx1]
+        theta = np.arctan2((x2 - x1), (y2 - y1))
+        a0 = [np.sin(theta) * (ds + hl / 2.) + x1,
+              np.cos(theta) * (ds + hl / 2.) + y1]
+        a1 = [np.sin(theta) * (ds - hl / 2.) + x1,
+              np.cos(theta) * (ds - hl / 2.) + y1]
 
-    # could be done in above block if you want
-    for ax, ay, theta in arrowData:
-        # use aspace as a guide for size and length of things
-        # scaling factors were chosen by experimenting a bit
-
-        dx0 = np.sin(theta) * hl / 2. + ax
-        dy0 = np.cos(theta) * hl / 2. + ay
-        dx1 = -1. * np.sin(theta) * hl / 2. + ax
-        dy1 = -1. * np.cos(theta) * hl / 2. + ay
-
-        if direc is 'pos':
-            ax0 = dx0
-            ay0 = dy0
-            ax1 = dx1
-            ay1 = dy1
-        else:
-            ax0 = dx1
-            ay0 = dy1
-            ax1 = dx0
-            ay1 = dy0
+        if direc is 'neg':
+            a0, a1 = a1, a0
 
         if isinstance(axes, Basemap):
-            (ax0, ax1), (ay0, ay1) = axes([ax0, ax1], [ay0, ay1])
+            (a0[0], a1[0]), (a0[1], a1[1]) = axes([a0[0], a1[0]],
+                                                  [a0[1], a1[1]])
             if not axes.ax:
                 loc_ax = plt.gca()
         else:
             loc_ax = axes
 
-        loc_ax.annotate('', xy=(ax0, ay0), xycoords='data',
-                xytext=(ax1, ay1), textcoords='data',
+        loc_ax.annotate('', xy=a0, xycoords='data',
+                xytext=a1, textcoords='data',
                 arrowprops=dict(headwidth=hw, frac=1., ec=c, fc=c))
 
     if isinstance(axes, Basemap):
