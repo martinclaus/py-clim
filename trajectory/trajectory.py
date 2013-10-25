@@ -50,9 +50,8 @@ def trajectory(axes, x, y, dim=1, narrs=30, dspace=0.5, direc='pos', \
         dim = 1
 
     # mask all missig values
-    joint_mask = np.logical_or(x.mask, y.mask)
-    x[joint_mask] = np.ma.masked
-    y[joint_mask] = np.ma.masked
+    np.ma.masked_where(y.mask, x, copy=False)
+    np.ma.masked_where(x.mask, y, copy=False)
 
     for t in xrange(x.shape[dim]):
         xt = x[..., t].compressed()
@@ -82,11 +81,15 @@ def arrow_plot(axes, x, y, latlon=False, narrs=30, dspace=0.5, direc='pos', \
     # r is the distance spanned between pairs of points
     if len(x) == 1:
         return
+
+    xscale = np.max(x) - np.min(x)
+    yscale = np.max(y) - np.min(y)
+
     r = [0]
     rtot = [0]
     for i in range(1, len(x)):
-        dx = x[i] - x[i - 1]
-        dy = y[i] - y[i - 1]
+        dx = (x[i] - x[i - 1]) / xscale
+        dy = (y[i] - y[i - 1]) / yscale
         r.append(np.sqrt(dx * dx + dy * dy))
         rtot.append(rtot[-1] + r[-1])
     r = np.array(r)
