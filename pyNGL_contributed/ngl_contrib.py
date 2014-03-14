@@ -38,6 +38,19 @@ def get_cyclic_colormap(ncolor=180., saturation=1., value=.75,
 
     cmap = get_cyclic_colormap(ncolor=180., saturation=1., value=.75,
                                bg_color=(1., 1., 1.), fg_color=(0., 0., 0.))
+
+    cmap : Numpy Nx3 array with RGB values of colormap
+
+    ncolor : Number of colors to produce. Note that the colormap actually have
+             ncolor + 2 colors (foreground and background color added).
+
+    saturation : saturation of the colormap in HSV space
+
+    value : brightness of the colormap.
+
+    bg_color : background color in RGB
+
+    fg_color : foreground color in RGB
     '''
     hue = np.linspace(0., 360., ncolor, endpoint=False)
     cmap = np.zeros((ncolor + 2, 3))
@@ -48,60 +61,105 @@ def get_cyclic_colormap(ncolor=180., saturation=1., value=.75,
     return cmap
 
 
-def add_panel_label(wks, plot, panLabel="", factor=(1., 1.),
+def add_panel_label(wks, plot, panLabel="", factor=.05,
                     placement="ul", axfunc=min, rlist=None):
+    ''' Adds a label to a plot similar to the result from the
+    nglPanelFigureString resource. The box around the perimenter of the label
+    is drawn by the text_ndc function and controlled by txPerim* attributes.
+
+    add_panel_label(wks, plot, panLabel="", factor=(1., 1.),
+                    placement="ul", axfunc=min, rlist=None)
+
+    wks : workstation Id as returned by open_wks()
+
+    plot : plot Id of the panel to add the label
+
+    panLabel : String containing the panel label
+
+    factor : ratio of margin to reference axis length
+
+    placement : One of "ul", "ur", "ll" or "lr" to specify the corner where the
+    label should be placed
+
+    axfunct : function which is used to give the reference axis length based on
+    the viewport width and height. This function should accept one list or
+    tupel as argument.
+
+    rlist : Resouce object that can be used to customize the label and its
+    perimeter box. It can contain any resource that is accepted by text_ndc as
+    a valid resource.
+    '''
     vpXF, vpYF, vpWidthF, vpHeightF = [ngl.get_float(plot, name) for name in
                                        ["vpXF", "vpYF",
                                        "vpWidthF", "vpHeightF"]]
-    length = .125 * axfunc([vpWidthF, vpHeightF])
-    lengthX = length * factor[0]
-    lengthY = length * factor[1]
-    margin = .25 * min((lengthX, lengthY))
-    print vpXF, vpYF, vpWidthF, vpHeightF
+
+    margin = factor * axfunc([vpWidthF, vpHeightF])
 
     ul_edge = [vpXF + .5 * vpWidthF, vpYF + .5 * vpHeightF]
     if placement[0] == "u":
         ul_edge[1] = vpYF - margin
+        tx_just = "Top"
     elif placement[0] == "l":
-        ul_edge[1] = vpYF - vpHeightF + margin + lengthY
+        ul_edge[1] = vpYF - vpHeightF + margin
+        tx_just = "Bottom"
     if placement[1] == "l":
         ul_edge[0] = vpXF + margin
+        tx_just = tx_just + "Left"
     elif placement[1] == "r":
-        ul_edge[0] = vpXF + vpWidthF - margin - lengthX
+        ul_edge[0] = vpXF + vpWidthF - margin
+        tx_just = tx_just + "Right"
     if len(ul_edge) != 2:
-        raise ValueError("placement is not in ul, ur, ll, lr")
+        raise ValueError("placement is not in ['ul', 'ur', 'll', 'lr']")
 
-    x_box = ul_edge[0] + np.array((0., 0., lengthX, lengthX, 0.))
-    y_box = ul_edge[1] - np.array((0., lengthY, lengthY, 0., 0.))
+    tx_res = {"txFontHeightF": .02,
+              "txPerimOn": True,
+              "txBackgroundFillColor": 0,
+              "txJust": tx_just}
+    tx_res.update(res.__dict__)
 
-    box_res = {"gsFillColor": 0,
-               "gsEdgeColor": 1,
-               "gsEdgesOn": True}
-
-    tx_res = {"txFontHeightF": .02}
-
-    x_tx = ul_edge[0] + .5 * lengthX
-    y_tx = ul_edge[1] - .5 * lengthY
-
-    if rlist:
-        for key, value in rlist.__dict__:
-            if key[0:2] == "gs" and key[2].isupper():
-                box_res[key] = value
-            elif key[0:2] == "tx" and key[2].isupper():
-                tx_res[key] = value
-
-    ngl.polygon_ndc(wks, x_box, y_box, box_res)
-    ngl.text_ndc(wks, panLabel, x_tx, y_tx, tx_res)
+    ngl.text_ndc(wks, *ul_edge, _dict2Resource(tx_res))
 
 
-def set_plot_position(plot, vpXY=(.2, .8), vpWH=(.6, .6)):
-    rlist = {}
-    rlist["vpXF"], rlist["vpYF"] = vpXY
-    rlist["vpWidthF"], rlist["vpHeightF"] = vpWH
+def set_plot_position(plot, vpXY=None, vpWH=None):
+    '''Change the viewport location and width. If one is omitted, the value
+    will be retained.
+
+    set_plot_position(plot, vpXY=None, vpWH=None)
+
+    plot : plot Id of the plot to modify
+
+    vpXY : tupel of the coordinates of the upper left corner of the viewport in
+    NDC space
+
+    vpWH : tupel of viewports width and height in NDC space
+    '''
+    attrib = ["vpXF", "vpYF", "vpWidthF", "vpHeightF"]
+    rlist = dict(zip(attrib, [ngl.get_float(plot, name) for name in attrib]))
+
+    if vpXY:
+        rlist["vpXF"], rlist["vpYF"] = vpXY
+    if vpWH:
+        rlist["vpWidthF"], rlist["vpHeightF"] = vpWH
     _set_values(plot, rlist)
 
 
 def cn_sym_min_max(x, res, ncontours=15, outside=True, aboutZero=True):
+    '''Adjust the contour level configuration of a plot resource to give nice
+    contour levels symmetric about zero. The contour levels are computed with
+    NGL.nice_cntr_levels().
+
+    cn_sym_min_max(x, res, ncontours=15, outside=True, aboutZero=True)
+
+    x : data used in the contour plot.
+
+    res : Resource object that will be updated accordingly.
+
+    outside : Whether the maxima is outside or inside the contour range. Will
+    be passed to NGL.nice_cntr_levels().
+
+    aboutZero : Whether the contour levels will be centered about Zero. Will be
+    passed to NGL.nice_cntr_levels().
+    '''
     min_x = np.min(x)
     max_x = np.max(x)
     if min_x == max_x:
@@ -117,26 +175,54 @@ def cn_sym_min_max(x, res, ncontours=15, outside=True, aboutZero=True):
     res.__dict__.update(newres)
 
 
-def cn_neg_dash_contours(contour):
-    levels = ngl.get_float_array(contour, "cnLevels")
+def cn_neg_dash_contours(plot, pattern=2):
+    '''Changes the line dash pattern of the negative contour lines.
+
+    cn_neg_dash_contours(plot, pattern=2)
+
+    plot : plot Id of the plot to modify
+
+    pattern : Pattern index. See http://www.ncl.ucar.edu/Document/Graphics/Images/dashpatterns.png
+    for a list of available patterns.
+    '''
+    levels = ngl.get_float_array(plot, "cnLevels")
 
     patterns = np.zeros((len(levels)), 'i')
     patterns[:] = 0     # solid line
     for i in xrange(len(levels)):
         if (levels[i] < 0.):
-            patterns[i] = 2
+            patterns[i] = pattern
     rlist = {"cnLineDashPatterns": patterns,
              "cnMonoLineDashPattern": False}
-    _set_values(contour, rlist)
+    _set_values(plot, rlist)
 
 
-def cn_thick_zero_contour(contour, factor=2.):
-    cn_line_thickness(contour, val=0., factor=factor)
+def cn_thick_zero_contour(plot, factor=2.):
+    ''' Increases the thickness of the zero contour line.
+
+    cn_thick_zero_contour(plot, factor=2.)
+
+    plot : plot Id of the plot to modify
+
+    factor : float that will be multiplied to the present thickness
+    '''
+    cn_line_thickness(plot, val=0., factor=factor)
 
 
-def cn_line_thickness(contour, val=0., factor=2.):
-    cnLevels = ngl.get_float_array(contour, "cnLevels")
-    cnLineThicknesses = ngl.get_float_array(contour, "cnLineThicknesses")
+def cn_line_thickness(plot, val=0., factor=2.):
+    ''' Increases the thickness of contour lines corresponding to a list of
+    values
+
+    cn_line_thickness(contour, val=0., factor=2.)
+
+    plot : plot Id of the plot to modify
+
+    val : scalar or list of values, which contour lines should be modified.
+
+    factor : scaling factor for line thickness
+    '''
+    cnLevels = ngl.get_float_array(plot, "cnLevels")
+    cnLineThicknesses = ngl.get_float_array(plot, "cnLineThicknesses")
 
     for i, thickness in enumerate(cnLineThicknesses[:]):
         if cnLevels[i] in val:
@@ -144,63 +230,124 @@ def cn_line_thickness(contour, val=0., factor=2.):
 
     rlist = {"cnMonoLineThickness": False,
              "cnLineThicknesses": cnLineThicknesses}
-    _set_values(contour, rlist)
+    _set_values(plot, rlist)
 
 
-def tm_lat_lon_labels(contour, ax="XB", direction="zonal"):
-    deg_c = '~S~o~N~'
+def tm_lat_lon_labels(plot, ax="XB", direction=None, fmt="%d"):
+    '''Add degree symbols to the tickmark labels of one axis of a plot. This
+    function has to be called for each axis, that should get degree tickmark
+    labels
+
+    tm_lat_lon_labels(plot, ax="XB", direction="zonal")
+
+    plot : plot Id of the plot to modify
+
+    ax : one of "XB", "XT", "YL", "YR". Specifies the axis to work on.
+
+    direction : String that starts with either "z" or "m", to indicate the
+    direction of the axis (zonal or meridional). If omitted, a x-axis will be
+    assumed to be zonal. If the string starts with any other character, there
+    will be no hemisperic lables added, i.e N, S, W or E.
+
+    fmt : format string of the number
+    '''
+    def do_nothing(x):
+        return x
+    func_code = ngl.get_string(plot, "tm" + ax + "LabelFuncCode")
+    fmt_s = func_code.join([fmt, "S", "o", "N", ""])
+    if not direction:
+        if ax[0].lower() == "x":
+            direction = "zonal"
+        else:
+            direction = "meridional"
     if direction[0].lower() == "z":
-        hem_label = (deg_c + "W", deg_c + "E")
+        hem_label = ("W", "E")
+        func = abs
     elif direction[0].lower() == "m":
-        hem_label = (deg_c + "S", deg_c + "N")
-    tm_values = ngl.get_float_array(contour, "tm" + ax + "Values")
-    mtm_values = ngl.get_float_array(contour, "tm" + ax + "MinorValues")
+        hem_label = ("S", "N")
+        func = abs
+    else:
+        hem_label = ("", "")
+        func = do_nothing
 
-    rlist = {"tm" + ax + "Mode": "Explicit",
-             "tm" + ax + "Values": tm_values,
-             "tm" + ax + "MinorValues": mtm_values,
-             "tm" + ax + "Labels": ["%d" % abs(val) + hem_label[0] if val < 0.
-                                    else "%d" % abs(val) + hem_label[1]
-                                    for val in tm_values]}
-    _set_values(contour, rlist)
+    tm_values = ngl.get_float_array(plot, "tm" + ax + "Values")
+    mtm_values = ngl.get_float_array(plot, "tm" + ax + "MinorValues")
 
-
-def tm_deg_labels(plt_obj, ax="YL"):
-    tm_values = ngl.get_float_array(plt_obj, "tm" + ax + "Values")
-    mtm_values = ngl.get_float_array(plt_obj, "tm" + ax + "MinorValues")
-
-    labels = ["%3.1f~S~o~N~" % val for val in tm_values]
+    labels = [fmt_s % func(val) + hem_label[0] if val < 0.
+              else fmt_s % func(val) + hem_label[1] for val in tm_values]
 
     rlist = {"tm" + ax + "Mode": "Explicit",
              "tm" + ax + "Values": tm_values,
              "tm" + ax + "MinorValues": mtm_values,
              "tm" + ax + "Labels": labels}
+    _set_values(plot, rlist)
 
-    _set_values(plt_obj, rlist)
+
+def tm_deg_labels(plot, ax="YL", fmt="%3.1f"):
+    '''Add degree symbols an format the tickmark labels of an given axis
+
+    tm_deg_labels(plot, ax="YL", fmt="%3.1f"):
+
+    plot : plot Id of the plot to modify
+
+    ax : one of "XB", "XT", "YL", "YR". Specifies the axis to work on.
+
+    fmt : format string of the number
+    '''
+    tm_lat_lon_labels(plot, ax, direction="any", fmt=fmt)
 
 
 def lb_create_labelbar(wks, vpXY, vpWH, nboxes=11, levels=(-1., 1.),
                        frm_str="{}", rlist=None):
+    '''Creates a label bar.
+
+    lb = lb_create_labelbar(wks, vpXY, vpWH, nboxes=11, levels=(-1., 1.),
+                       frm_str="{}", rlist=None)
+
+    wks : workstation Id as returned by open_wks()
+
+    vpXY : tupel of upper left coordinates of the label bar's view port in NDC
+
+    vpWH : tupel containing width and height of the label bar's view port
+    in NDC
+
+    nboxes : number of boxes
+
+    levels : tupel containing the data extrems
+
+    frm_str : format string used to format the numbers
+
+    rlist : Resource object containing additional resources that are accepted
+    by labelbar_ndc()
+    '''
     # add label bar for depth
     levels = np.linspace(*levels, num=nboxes)
     labels = [frm_str.format(val) for val in levels]
-    labres = ngl.Resources()
-    labres.lbAutoManage = False
-    labres.vpWidthF, labres.vpHeightF = vpWH
-    labres.lbMonoFillPattern = 21
-    labres.lbOrientation = "vertical"
-    labres.lbFillColors = map_data_to_color(wks, levels)
-    labres.lbLabelStride = 10
+    labres = {"lbAutoManage": False,
+              "vpWidthF": vpWH[0],
+              "vpHeightF": vpWH[1],
+              "lbMonoFillPattern": 21,
+              "lbOrientation": "vertical",
+              "lbFillColors": map_data_to_color(wks, levels),
+              "lbLabelStride": 10}
     if rlist:
-        labres.__dict__.update(rlist)
-    lb = ngl.labelbar_ndc(wks, nboxes, labels, *vpXY, rlistc=labres)
+        labres.update(rlist.__dict__)
+    lb = ngl.labelbar_ndc(wks, nboxes, labels, *vpXY,
+                          rlistc=_dict2Resource(labres))
     return lb
 
 
-def lb_set_phase_labels(contour):
-    lstride = ngl.get_integer(contour, "lbLabelStride")
-    label = ngl.get_string_array(contour, "lbLabelStrings")
-    fun_code = ngl.get_string(contour, "lbLabelFuncCode")
+def lb_set_phase_labels(plot):
+    '''Changes the labels of a color bar to -pi, -pi/2, 0, pi/2 and pi. The
+    label bar must already have only these lables.
+
+    lb_set_phase_labels(plot)
+
+    plot : plot id of object that controlls the lable bar
+    '''
+    lstride = ngl.get_integer(plot, "lbLabelStride")
+    label = ngl.get_string_array(plot, "lbLabelStrings")
+    fun_code = ngl.get_string(plot, "lbLabelFuncCode")
     pi_str = fun_code.join(["", "F33", "p"])
     pi_half_str = fun_code.join(["", "H2V15F33", "p", "H-15V-1", "_",
                                  "H-16V-30", "2"])
@@ -211,11 +358,26 @@ def lb_set_phase_labels(contour):
     _set_values(contour, rlist)
 
 
-def lb_format_labels(contour, fmt, minmax=(0., 1.)):
-    levels = [float(s) for s in
-        ngl.get_string_array(contour, "cnLevels")]
+def lb_format_labels(plot, fmt, minmax=None):
+    '''Applies a formatting to the lables of a label bar
+
+    lb_format_labels(plot, fmt, minmax=None)
+
+    plot : plot id of object that controlls the lable bar
+
+    fmt : formatting string
+
+    minmax : values of the maximum and minimum. Required, if cnLabelBarEndStyle
+    is set to IncludeMinMaxLabels. If not provided in this case, a ValueError
+    will be raised.
+    '''
+    levels = [float(s) for s in ngl.get_string_array(contour, "cnLevels")]
     labels = [fmt % lev for lev in levels]
     if ngl.get_string(contour, "cnLabelBarEndStyle") == "IncludeMinMaxLabels":
+        if not minmax:
+            raise ValueError("You need to provide minmax,"
+                           + " since cnLabelBarEndStyle is set to "
+                           + "IncludeMinMaxLabels!")
         minlabel = [fmt % minmax[0]]
         minlabel.extend(labels)
         labels = minlabel
@@ -489,6 +651,10 @@ relative to the heads centre.
 
 
 def _set_values(plot, res_dict):
+    ngl.set_values(plot, _dict2Resource(res_dict))
+
+
+def _dict2Resource(dic):
     res = ngl.Resources()
-    res.__dict__.update(res_dict)
-    ngl.set_values(plot, res)
+    res.__dict__.update(dic)
+    return res
