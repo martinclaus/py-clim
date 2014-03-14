@@ -115,9 +115,10 @@ def add_panel_label(wks, plot, panLabel="", factor=.05,
               "txPerimOn": True,
               "txBackgroundFillColor": 0,
               "txJust": tx_just}
-    tx_res.update(res.__dict__)
+    if rlist:
+        tx_res.update(rlist.__dict__)
 
-    ngl.text_ndc(wks, *ul_edge, _dict2Resource(tx_res))
+    ngl.text_ndc(wks, panLabel, *ul_edge, rlistc=_dict2Resource(tx_res))
 
 
 def set_plot_position(plot, vpXY=None, vpWH=None):
@@ -224,6 +225,11 @@ def cn_line_thickness(plot, val=0., factor=2.):
     cnLevels = ngl.get_float_array(plot, "cnLevels")
     cnLineThicknesses = ngl.get_float_array(plot, "cnLineThicknesses")
 
+    try:
+        (v for v in val)
+    except TypeError:
+        val = [val]
+
     for i, thickness in enumerate(cnLineThicknesses[:]):
         if cnLevels[i] in val:
             cnLineThicknesses[i] = thickness * factor
@@ -298,7 +304,7 @@ def tm_deg_labels(plot, ax="YL", fmt="%3.1f"):
 
 
 def lb_create_labelbar(wks, vpXY, vpWH, nboxes=11, levels=(-1., 1.),
-                       frm_str="{}", rlist=None):
+                       fmt_str="{}", rlist=None):
     '''Creates a label bar.
 
     lb = lb_create_labelbar(wks, vpXY, vpWH, nboxes=11, levels=(-1., 1.),
@@ -315,14 +321,14 @@ def lb_create_labelbar(wks, vpXY, vpWH, nboxes=11, levels=(-1., 1.),
 
     levels : tupel containing the data extrems
 
-    frm_str : format string used to format the numbers
+    fmt_str : format string used to format the numbers
 
     rlist : Resource object containing additional resources that are accepted
     by labelbar_ndc()
     '''
     # add label bar for depth
     levels = np.linspace(*levels, num=nboxes)
-    labels = [frm_str.format(val) for val in levels]
+    labels = [fmt_str.format(val) for val in levels]
     labres = {"lbAutoManage": False,
               "vpWidthF": vpWH[0],
               "vpHeightF": vpWH[1],
@@ -355,7 +361,7 @@ def lb_set_phase_labels(plot):
                         pi_half_str, pi_str]
     rlist = {"cnExplicitLabelBarLabelsOn": True,
              "lbLabelStrings": label}
-    _set_values(contour, rlist)
+    _set_values(plot, rlist)
 
 
 def lb_format_labels(plot, fmt, minmax=None):
@@ -371,9 +377,9 @@ def lb_format_labels(plot, fmt, minmax=None):
     is set to IncludeMinMaxLabels. If not provided in this case, a ValueError
     will be raised.
     '''
-    levels = [float(s) for s in ngl.get_string_array(contour, "cnLevels")]
+    levels = [float(s) for s in ngl.get_string_array(plot, "cnLevels")]
     labels = [fmt % lev for lev in levels]
-    if ngl.get_string(contour, "cnLabelBarEndStyle") == "IncludeMinMaxLabels":
+    if ngl.get_string(plot, "cnLabelBarEndStyle") == "IncludeMinMaxLabels":
         if not minmax:
             raise ValueError("You need to provide minmax,"
                            + " since cnLabelBarEndStyle is set to "
@@ -384,7 +390,7 @@ def lb_format_labels(plot, fmt, minmax=None):
         labels.append(fmt % minmax[1])
     rlist = {"cnExplicitLabelBarLabelsOn": True,
              "lbLabelStrings": labels}
-    _set_values(contour, rlist)
+    _set_values(plot, rlist)
 
 
 def trj(wks, x, y, time, res=None):
