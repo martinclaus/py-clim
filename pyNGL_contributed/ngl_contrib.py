@@ -303,111 +303,169 @@ def tm_deg_labels(plot, ax="YL", fmt="%3.1f"):
     tm_lat_lon_labels(plot, ax, direction="any", fmt=fmt)
 
 
-#def lg_create_legend(wks, vpXY=(.1, .9), vpWH=(.8, .8), shape=(2, 2),
-#                     labels=["a", "b", "c", "d"], rlist=None):
-#    refax = min(vpWH)
-#    # set default values
-#    if not rlist:
-#        rlist = {}
-#    rlist["lgLineLabelStrings"] = labels
-#    ngl._set_legend_res(rlist, rlist)
-#    margin = []
-#    defaults = {"lgBoxBackground": -1,
-#                "lgBoxLineColor": 0,
-#                "lgBoxLineDashPattern": 0,
-#                "lgBoxLineDashSegLenF": 0.15,
-#                "lgBoxLineThicknessF": 1.0,
-#                "lgBoxLinesOn": False,
-#                "lgBoxMajorExtentF": .5,
-#                "lgDashIndexes": [0 for l in labels],
-#                "lgItemCount": len(labels),
-#                "lgItemOrder": range(len(labels))[::-1],
-#                "lgItemTypes": ["Lines" for l in labels],
-#                "lgLabelAlignment": "ItemCenters",
-#                "lgLabelAngleF": 0.0,
-#                "lgLabelConstantSpacingF": 0.0,
-#                "lgLabelDirection": "Across",
-#                "lgLabelFont": "pwritx",
-#                "lgLabelFontAspectF": 1.0,
-#                "lgLabelFontColor": 0,
-#                "lgLabelFontHeightF": 0.02,
-#                "lgLabelFontQuality": "High",
-#                "lgLabelFontThicknessF": 1.0,
-#                "lgLabelFuncCode": ":",
-#                "lgLabelJust": "CentreCentre",
-#                "lgLabelOffsetF": 0.02,
-#                "lgLabelPosition": "Right",
-#                "lgLabelStride": 1,
-#                "lgLabelsOn": True,
-#                "lgLegendOn": True,
-#                "lgLineColors": range(len(labels)) + 2,
-#                "lgLineDashSegLenF": 0.15,
-#                "lgLineLabelConstantSpacingF": 0.0,
-#                "lgLineLabelFont": "pwritx",
-#                "lgLineLabelFontAspectF": 1.0,
-#                "lgLineLabelFontHeights": [0.01 for l in labels],
-#                "lgLineLabelFontQuality": "High",
-#                "lgLineLabelFontThicknessF": 1.0,
-#                "lgLineLabelFuncCode": ":",
-#                "lgLineLabelStrings": labels,
-#                "lgLineLabelsOn": True}
-#    for key in ("Top", "Bottom", "Left",  "Right"):
-#        _set_default(rlist, "lg{}MarginF".format(key), .05)
-#        margin[key] = rlist["lg{}MarginF".format(key)] * refax
-#    _set_mono_default(rlist, "lgMonoDashIndex", "lgDashIndex", "lgDashIndexes",
-#                      0)
-#    _set_mono_default(rlist, "lgMonoItemType", "lgItemType", "lgItemTypes",
-#                      "Lines")
-#    _set_mono_default(rlist, "lgMonoLineColor", "lgLineColor", "lgLineColors",
-#                      0)
-#    _set_mono_default(rlist, "lgMonoLineLabelFontHeight",
-#                      "lgLineLabelFontHeight", "lgLineLabelFontHeights", 0.01)
-#    _set_mono_default(rlist, "lgMonoLineLabelFontColor",
-#                      "lgLineLabelFontColor", "lgLineLabelFontColor", 0)
-#    _set_default(rlist, "lgLineLabelFontColors", rlist["lgLineColors"])
-#
-#
-#    # calculate positions
-#    itemPanelXY = (vpXY[0] + margin["Left"], vpXY[1] - margin["Top"])
-#    itemPanelWH = (vpWH[0] - margin["Left"] - margin["Right"],
-#                   vpWH[1] - margin["Top"] - margin["Bottom"])
-#
-##    leg_labels = ["GB2012", "Full", "Equator", "West", "Centre", "East"]
-#
-#    leg_lineLength = .075
-#    leg_xMarker = .2 + np.linspace(0., .2, 2)
-#    leg_yMarker = .1 + np.linspace(.08, 0., 3)
-#
-#    marker_ind = [None] + res.xyMarkers
-#    marker_res = ngl.Resources()
-#    marker_res.gsMarkerColor = "black"
-#    marker_res.gsMarkerThicknessF = 2.
-#    marker_res.gsMarkerSizeF = .01
-#
-#    line_dash_ind = [0] + res.xyDashPatterns
-#    line_res = ngl.Resources()
-#    line_res.gsLineColor = "black"
-#    line_res.gsLineThicknessF = 2.
-#
-#    lab_res = ngl.Resources()
-#    lab_res.txFontHeightF = large_font
-#    lab_res.txJust = "CenterLeft"
-#
-#
-#    ind = 0
-#    for mx in leg_xMarker:
-#        for my in leg_yMarker:
-#            line_res.gsLineDashPattern = line_dash_ind[ind]
-#            ngl.polyline_ndc(wks,
-#                             [mx - leg_lineLength / 2., mx + leg_lineLength / 2.],
-#                             [my, my], line_res)
-#            if not marker_ind[ind] == None:
-#                marker_res.gsMarkerIndex = marker_ind[ind]
-#                ngl.polymarker_ndc(wks, mx, my, marker_res)
-#            ngl.text_ndc(wks, leg_labels[ind],
-#                         mx + leg_lineLength / 2. + .01, my, lab_res)
-#            ind += 1
-#
+def lg_create_custom_legend(wks, vpXY=(.1, .9), vpWH=(.8, .8), shape=(2, 2),
+                     labels=["a", "b", "c", "d"], rlist=None):
+    refax = min(vpWH)
+    # set default values
+    if not rlist:
+        rlist = {}
+    else:
+        rlist = _resource2dict(rlist)
+    rlist["lgLineLabelStrings"] = labels
+    _set_custom_legend_defaults(rlist, labels)
+
+    # compute locations
+    margin = []
+    for key in ("Top", "Bottom", "Left",  "Right"):
+        margin[key] = rlist["lg{}MarginF".format(key)] * refax
+
+    # calculate positions
+    itemPanelXY = (vpXY[0] + margin["Left"], vpXY[1] - margin["Top"])
+    itemPanelWH = (vpWH[0] - margin["Left"] - margin["Right"],
+                       vpWH[1] - margin["Top"] - margin["Bottom"])
+
+    if rlist["lgTitleExtendF"] in ("Top", "Bottom"):
+        titleExtend = rlist["lgTitleExtendF"] * (vpWH[1]
+                        - margin["Top"] - margin["Bottom"])
+        if rlist["lgTitleExtendF"] == "Top":
+            itemPanelXY[1] = itemPanelXY[1] - titleExtend
+        itemPanelWH[1] = itemPanelWH[1] - titleExtend
+    else:
+        titleExtend = rlist["lgTitleExtendF"] * (vpWH[0]-
+                        - margin["Left"] - margin["Right"])
+        if rlist["lgTitleExtendF"] == "Left"
+            itemPanelXY[0] = itemPanelXY[0] - titleExtend
+        itemPanelWH[0] = itemPanelWH[0] - titleExtend
+
+    leg_lineLength = .075
+    leg_xMarker = .2 + np.linspace(0., .2, 2)
+    leg_yMarker = .1 + np.linspace(.08, 0., 3)
+
+    marker_ind = [None] + res.xyMarkers
+    marker_res = ngl.Resources()
+    marker_res.gsMarkerColor = "black"
+    marker_res.gsMarkerThicknessF = 2.
+    marker_res.gsMarkerSizeF = .01
+
+    line_dash_ind = [0] + res.xyDashPatterns
+    line_res = ngl.Resources()
+    line_res.gsLineColor = "black"
+    line_res.gsLineThicknessF = 2.
+
+    lab_res = ngl.Resources()
+    lab_res.txFontHeightF = large_font
+    lab_res.txJust = "CenterLeft"
+
+
+    ind = 0
+    for mx in leg_xMarker:
+        for my in leg_yMarker:
+            line_res.gsLineDashPattern = line_dash_ind[ind]
+            ngl.polyline_ndc(wks,
+                             [mx - leg_lineLength / 2., mx + leg_lineLength / 2.],
+                             [my, my], line_res)
+            if not marker_ind[ind] == None:
+                marker_res.gsMarkerIndex = marker_ind[ind]
+                ngl.polymarker_ndc(wks, mx, my, marker_res)
+            ngl.text_ndc(wks, leg_labels[ind],
+                         mx + leg_lineLength / 2. + .01, my, lab_res)
+            ind += 1
+
+
+def _set_custom_legend_defaults(rlist, labels):
+    ngl._set_legend_res(rlist, rlist)
+    defaults = {"lgBoxBackground": -1,
+                "lgBoxLineColor": 0,
+                "lgBoxLineDashPattern": 0,
+                "lgBoxLineDashSegLenF": 0.15,
+                "lgBoxLineThicknessF": 1.0,
+                "lgBoxLinesOn": False,
+                "lgBoxMajorExtentF": .5,
+                "lgDashIndexes": [0 for l in labels],
+                "lgItemCount": len(labels),
+                "lgItemOrder": range(len(labels))[::-1],
+                "lgItemTypes": ["Lines" for l in labels],
+                "lgLabelAlignment": "ItemCenters",
+                "lgLabelAngleF": 0.0,
+                "lgLabelConstantSpacingF": 0.0,
+                "lgLabelDirection": "Across",
+                "lgLabelFont": "pwritx",
+                "lgLabelFontAspectF": 1.0,
+                "lgLabelFontColor": 0,
+                "lgLabelFontHeightF": 0.02,
+                "lgLabelFontQuality": "High",
+                "lgLabelFontThicknessF": 1.0,
+                "lgLabelFuncCode": ":",
+                "lgLabelJust": "CentreCentre",
+                "lgLabelOffsetF": 0.02,
+                "lgLabelPosition": "Right",
+                "lgLabelStride": 1,
+                "lgLabelsOn": True,
+                "lgLegendOn": True,
+                "lgLineColors": range(len(labels)) + 2,
+                "lgLineDashSegLenF": 0.15,
+                "lgLineLabelConstantSpacingF": 0.0,
+                "lgLineLabelFont": "pwritx",
+                "lgLineLabelFontAspectF": 1.0,
+                "lgLineLabelFontHeights": [0.01 for l in labels],
+                "lgLineLabelFontQuality": "High",
+                "lgLineLabelFontThicknessF": 1.0,
+                "lgLineLabelFuncCode": ":",
+                "lgLineLabelStrings": labels,
+                "lgLineLabelsOn": True,
+                "lgMarkerIndexes": [1 for l in labels],
+                "lgOrientation": "Vertical",
+                "lgPerimColor": 0,
+                "lgPerimDashPattern": 0,
+                "lgPerimDashSegLenF": 0.15,
+                "lgPerimFill": "HollowFill",
+                "lgPerimFillColor": 1,
+                "lgPerimThicknessF": 1.0,
+                "lgTitleAngleF": 0.0,
+                "lgTitleConstantSpacingF": 0.0,
+                "lgTitleDirection": "Across",
+                "lgTitleExtentF": 0.15,
+                "lgTitleFont": "pwritx",
+                "lgTitleFontAspectF": 1.0,
+                "lgTitleFontColor": 0,
+                "lgTitleFontHeightF": .025,
+                "lgTitleFontQuality": "High",
+                "lgTitleFontThicknessF": 1.0,
+                "lgTitleFuncCode": ":",
+                "lgTitleJust": "CenterCenter",
+                "lgTitleOffsetF": 0.03,
+                "lgTitleOn": True,
+                "lgTitlePosition": "Top",
+                "lgTitleString": "",
+                }
+    for key, val in defaults.items():
+        _set_default(rlist, key, val)
+    for key in ("Top", "Bottom", "Left",  "Right"):
+        _set_default(rlist, "lg{}MarginF".format(key), .05)
+    _set_mono_default(rlist, "lgMonoDashIndex", "lgDashIndex",
+                      "lgDashIndexes", 0)
+    _set_mono_default(rlist, "lgMonoItemType", "lgItemType",
+                      "lgItemTypes", "Lines")
+    _set_mono_default(rlist, "lgMonoLineColor", "lgLineColor",
+                      "lgLineColors", 0)
+    _set_mono_default(rlist, "lgMonoLineDashSegLen", "lgLineDashSegLenF",
+                      "lgLineDashSegLens", 0.15)
+    _set_mono_default(rlist, "lgMonoLineLabelFontColor",
+                      "lgLineLabelFontColor", "lgLineLabelFontColor", 0)
+    _set_mono_default(rlist, "lgMonoLineLabelFontHeight",
+                      "lgLineLabelFontHeight", "lgLineLabelFontHeights", 0.01)
+    _set_mono_default(rlist, "lgMonoLineThickness", "lgLineThicknessF",
+                      "lgLineThicknesses", 1.0)
+    _set_mono_default(rlist, "lgMonoMarkerColor", "lgMarkerColor",
+                      "lgMarkerColors", 0)
+    _set_mono_default(rlist, "lgMonoMarkerIndex", "lgMarkerIndex",
+                      "lgMarkerIndexes", 1)
+    _set_mono_default(rlist, "lgMonoMarkerSize", "lgMarkerSizeF",
+                      "lgMarkerSizes", 0.01)
+    _set_mono_default(rlist, "lgMonoMarkerThickness", "lgMarkerThicknessF",
+                      "lgMarkerThicknesses", 1.)
+    _set_default(rlist, "lgLineLabelFontColors", rlist["lgLineColors"])
+
 
 def lg_create_legend_nd(wks, labels, x, y, shape, rlist=None):
     # Set defaults
