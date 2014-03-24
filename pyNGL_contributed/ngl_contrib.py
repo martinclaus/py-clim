@@ -303,143 +303,321 @@ def tm_deg_labels(plot, ax="YL", fmt="%3.1f"):
     tm_lat_lon_labels(plot, ax, direction="any", fmt=fmt)
 
 
-def lg_create_custom_legend(wks, vpXY=(.1, .9), vpWH=(.8, .8), shape=(2, 2),
-                     labels=["a", "b", "c", "d"], rlist=None):
-    refax = min(vpWH)
+def lg_create_custom_legend(wks, vpXY=(.1, .9), vpWH=(.8, .8), shape=(3, 2),
+                     labels=["a", "b", "c", "d", "e"], rlistc=None):
+    if len(labels) > shape[0] * shape[1]:
+        raise ValueError("To many legend items for given shape!")
     # set default values
-    if not rlist:
+    if not rlistc:
         rlist = {}
     else:
-        rlist = _resource2dict(rlist)
-    rlist["lgLineLabelStrings"] = labels
-    _set_custom_legend_defaults(rlist, labels)
+        rlist = _resource2dict(rlistc)
+    rlist["lgLabelStrings"] = labels
+    rlist["vpXY"] = vpXY
+    rlist["vpWH"] = vpWH
+    _set_custom_legend_defaults(rlist)
 
     # compute locations
-    margin = []
+    if rlist["lgOrientation"][0].lower() == "v":
+        rlist["min_ax"] = vpWH[0]
+    else:
+        rlist["min_ax"] = vpWH[1]
+    rlist["margin"] = {}
     for key in ("Top", "Bottom", "Left",  "Right"):
-        margin[key] = rlist["lg{}MarginF".format(key)] * refax
+        lgKey = "lg{}MarginF".format(key)
+        rlist["margin"][key] = rlist[lgKey] * rlist["min_ax"]
 
     # calculate positions
-    itemPanelXY = (vpXY[0] + margin["Left"], vpXY[1] - margin["Top"])
-    itemPanelWH = (vpWH[0] - margin["Left"] - margin["Right"],
-                       vpWH[1] - margin["Top"] - margin["Bottom"])
+    itemPanelXY = [vpXY[0] + rlist["margin"]["Left"],
+                   vpXY[1] - rlist["margin"]["Top"]]
+    itemPanelWH = [vpWH[0]
+                    - rlist["margin"]["Left"] - rlist["margin"]["Right"],
+                   vpWH[1]
+                    - rlist["margin"]["Top"] - rlist["margin"]["Bottom"]]
 
-    if rlist["lgTitleExtendF"] in ("Top", "Bottom"):
-        titleExtend = rlist["lgTitleExtendF"] * (vpWH[1]
-                        - margin["Top"] - margin["Bottom"])
-        if rlist["lgTitleExtendF"] == "Top":
-            itemPanelXY[1] = itemPanelXY[1] - titleExtend
-        itemPanelWH[1] = itemPanelWH[1] - titleExtend
+    _lg_add_legend_perim(wks, vpXY, vpWH, rlist)
+    _lg_add_legend_title(wks, (itemPanelXY, itemPanelWH), rlist)
+
+    itemsWH = (itemPanelWH[0] / shape[1], itemPanelWH[1] / shape[0])
+    itemsXY = ([itemPanelXY[0] + i * itemsWH[0] for i in range(shape[1])],
+               [itemPanelXY[1] - i * itemsWH[1] for i in range(shape[0])])
+
+    convert_position = {"Left": "Bottom", "Bottom": "Left",
+                        "Right": "Top", "Top": "Right", "Center": "Center"}
+    if rlist["lgOrientation"][0].lower() == "v":
+        rlist["valid_positions"] = ("Left", "Right", "Center")
     else:
-        titleExtend = rlist["lgTitleExtendF"] * (vpWH[0]-
-                        - margin["Left"] - margin["Right"])
-        if rlist["lgTitleExtendF"] == "Left"
-            itemPanelXY[0] = itemPanelXY[0] - titleExtend
-        itemPanelWH[0] = itemPanelWH[0] - titleExtend
+        rlist["valid_positions"] = ("Top", "Bottom", "Center")
+    if rlist["lgLabelPosition"] not in rlist["valid_positions"]:
+        rlist["lgLabelPosition"] = convert_position[rlist["lgLabelPosition"]]
 
-    leg_lineLength = .075
-    leg_xMarker = .2 + np.linspace(0., .2, 2)
-    leg_yMarker = .1 + np.linspace(.08, 0., 3)
-
-    marker_ind = [None] + res.xyMarkers
-    marker_res = ngl.Resources()
-    marker_res.gsMarkerColor = "black"
-    marker_res.gsMarkerThicknessF = 2.
-    marker_res.gsMarkerSizeF = .01
-
-    line_dash_ind = [0] + res.xyDashPatterns
-    line_res = ngl.Resources()
-    line_res.gsLineColor = "black"
-    line_res.gsLineThicknessF = 2.
-
-    lab_res = ngl.Resources()
-    lab_res.txFontHeightF = large_font
-    lab_res.txJust = "CenterLeft"
+    for i in range(shape[0]):
+        for j in range(shape[1]):
+            if rlist["lgOrientation"][0].lower() == "h":
+                iItem = j + i * shape[1]
+            else:
+                iItem = i + j * shape[0]
+            if (iItem + 1) > rlist["lgItemCount"]:
+                break
+            _lg_add_legend_item(wks, rlist["lgItemOrder"][iItem],
+                                (itemsXY[0][j], itemsXY[1][i]), itemsWH, rlist)
 
 
-    ind = 0
-    for mx in leg_xMarker:
-        for my in leg_yMarker:
-            line_res.gsLineDashPattern = line_dash_ind[ind]
-            ngl.polyline_ndc(wks,
-                             [mx - leg_lineLength / 2., mx + leg_lineLength / 2.],
-                             [my, my], line_res)
-            if not marker_ind[ind] == None:
-                marker_res.gsMarkerIndex = marker_ind[ind]
-                ngl.polymarker_ndc(wks, mx, my, marker_res)
-            ngl.text_ndc(wks, leg_labels[ind],
-                         mx + leg_lineLength / 2. + .01, my, lab_res)
-            ind += 1
+def _lg_add_legend_perim(wks, (x, y), (w, h), res):
+    bres = {}
+    bres["gsEdgesOn"] = res["lgPerimOn"]
+    for key in _filter_keys(res, "lgPerimFill"):
+        bres["gsFill" + key] = res["lgPerimFill" + key]
+    for key in _filter_keys(res, "lgPerim", exceptions=("On"),
+                            falsepositive="Fill"):
+        bres["gsEdge" + key] = res["lgPerim" + key]
+    ngl.polygon_ndc(wks, *_xywh2corners((x, y), (w, h)),
+                    rlistc=_dict2Resource(bres))
 
 
-def _set_custom_legend_defaults(rlist, labels):
+def _lg_add_legend_title(wks, (iXY, iWH), res):
+    if not res["lgTitleOn"]:
+        return
+    x, y = list(res["vpXY"])
+    w, h = list(res["vpWH"])
+    offset = {"Top": (0, -res["lgTitleOffsetF"] * res["vpWH"][1]),
+              "Bottom": (0, res["lgTitleOffsetF"] * res["vpWH"][1]),
+              "Left": (res["lgTitleOffsetF"] * res["vpWH"][0], 0),
+              "Right": (-res["lgTitleOffsetF"] * res["vpWH"][0], 0)}
+    if res["lgTitlePosition"] in ("Top", "Bottom"):
+        w = res["lgTitleExtentF"] * (res["vpWH"][1]
+                        - res["margin"]["Top"] - res["margin"]["Bottom"])
+        if res["lgTitlePosition"] == "Top":
+            iXY[1] = iXY[1] - h + offset["Top"][1]
+            iWH[1] = iWH[1] - h + offset[res["lgTitlePosition"]][1]
+        elif res["lgTitlePosition"] == "Bottom":
+            y = res["vpXY"][1] - res["vpWH"][1] + h
+            iWH[1] = iWH[1] - h - offset[res["lgTitlePosition"]][1]
+    elif res["lgTitlePosition"] in ("Left", "Right"):
+        w = res["lgTitleExtentF"] * (res["vpWH"][0]
+                        - res["margin"]["Left"] - res["margin"]["Right"])
+        if res["lgTitlePosition"] == "Left":
+            iXY[0] = iXY[0] + w + offset["Left"][0]
+            iWH[0] = iWH[0] - w - offset[res["lgTitlePosition"]][0]
+        elif res["lgTitlePosition"] == "Right":
+            x = res["vpXY"][0] + res["vpWH"][0] - w
+            iWH[0] = iWH[0] - w + offset[res["lgTitlePosition"]][0]
+    else:
+        x, y, w, h = 0., 0., 0., 0.
+    tires = {}
+    # copy legend title properties
+    for key in _filter_keys(res, "lgTitle", exceptions=("ExtentF", "On",
+                                                        "Position", "String",
+                                                        "OffsetF")):
+        tires["tx" + key] = res["lgTitle" + key]
+    ngl.text_ndc(wks, res["lgTitleString"], x + w / 2., y - h / 2.,
+                 rlistc=_dict2Resource(tires))
+
+
+def _lg_add_legend_item(wks, iItem, (x, y), (w, h), res):
+    bx, by, bw, bh = x, y, w, h
+    if res["lgOrientation"][0].lower() == "v":
+        by = by - (1 - res["lgBoxMajorExtentF"]) * bh / 2.
+        bh = res["lgBoxMajorExtentF"] * bh
+        bw = res["lgBoxMinorExtentF"] * bw
+        if res["lgLabelPosition"] == "Left":
+            bx = bx + w - bw
+    else:
+        bx = bx + (1 - res["lgBoxMajorExtentF"]) * bw / 2.
+        bw = res["lgBoxMajorExtentF"] * bw
+        bh = res["lgBoxMinorExtentF"] * bh
+        if res["lgLabelPosition"] == "Top":
+            by = by - h + bh
+
+    if res["lgBoxLinesOn"]:
+        bres = {"gsEdgesOn": True}
+        for key in _filter_keys(res, "lgBox", exceptions=("LinesOn",
+                                                          "MajorExtentF",
+                                                          "MinorExtendF")):
+            if key == "Background":
+                bres["gsFillColor"] = res["lgBox" + key]
+            elif key[:4] == "Line":
+                bres["gsEdge" + key[:4]] = res["lgBox" + key]
+        ngl.polygon_ndc(wks, *_xywh2corners((bx, by), (bw, bh)),
+                        rlistc=_dict2Resource(bres))
+
+    _lg_add_legend_item_line(wks, iItem, (bx, by), (bw, bh), res)
+    _lg_add_legend_item_label(wks, iItem, (bx, by), (bw, bh), res)
+
+
+def _lg_add_legend_item_line(wks, iItem, (x, y), (w, h), res):
+    lbx, lby, lbw, lbh = x, y, w, h
+    if res["lgOrientation"][0].lower() == "v":
+        lx = (lbx, lbx + lbw)
+        ly = (lby - lbh / 2., lby - lbh / 2.)
+    else:
+        lx = (lbx + lbw / 2., lbx + lbw / 2.)
+        ly = (lby, lby - lbh)
+    linesOn = res["lgItemTypes"][iItem][-5:].lower() == "lines"
+    markerOn = res["lgItemTypes"][iItem][:4].lower() == "mark"
+    lineLabelsOn = res["lgLineLabelsOn"]
+
+    if linesOn:
+        lres = {}
+        for key in _filter_keys(res, "lgLine", falsepositive="Label"):
+            try:
+                lres[_plural2singular("gsLine" + key)] = res["lgLine" + key][iItem]
+            except TypeError:
+                pass
+        lres["gsLineDashPattern"] = res["lgDashIndexes"][iItem]
+        ngl.polyline_ndc(wks, lx, ly, rlistc=_dict2Resource(lres))
+
+    if markerOn:
+        lres = {}
+        for key in _filter_keys(res, "lgMarker"):
+            try:
+                lres[_plural2singular("gsMarker" + key)] = res["lgMarker" + key][iItem]
+            except:
+                pass
+        if lineLabelsOn:
+            mx, my = [[l[0] + fac * (l[1] - l[0]) for fac in [.2, .8]]
+                        for l in [lx, ly]]
+        else:
+            mx, my = [l[0] + .5 * (l[1] - l[0]) for l in [lx, ly]]
+        ngl.polymarker_ndc(wks, mx, my, rlistc=_dict2Resource(lres))
+
+    if lineLabelsOn:
+        txres = {}
+        for key in _filter_keys(res, "lgLineLabel", exceptions=("sOn",
+                                                                "Strings")):
+            try:
+                txres[_plural2singular("tx" + key)] = res["lgLineLabel" + key][iItem]
+            except TypeError:
+                txres["tx" + key] = res["lgLineLabel" + key]
+        txres["txBackgroundFillColor"] = max(res["lgBoxBackground"], 0)
+        if res["lgOrientation"][0].lower() == "h":
+            _set_default(txres, "txAngleF", 90.)
+        llx, lly = [(l[0] + l[1]) / 2. for l in [lx, ly]]
+        ngl.text_ndc(wks, res["lgLineLabelStrings"][iItem], llx, lly,
+                     rlistc=_dict2Resource(txres))
+
+
+def _lg_add_legend_item_label(wks, iItem, (x, y), (w, h), res):
+    if (not res["lgLabelsOn"]) or (not iItem % res["lgLabelStride"] == 0):
+        return
+    txres = {}
+    for key in _filter_keys(res, "lgLabel",
+                            exceptions=("sOn", "Strings","Alignment",
+                                        "AutoStride", "OffsetF", "Position",
+                                        "Stride")):
+        try:
+            txres[_plural2singular("tx" + key)] = res["lgLineLabel" + key][iItem]
+        except TypeError:
+            txres["tx" + key] = res["lgLineLabel" + key]
+
+    txJust, txy = _lg_get_item_label_justification_position(res, (x, y),
+                                                            (w, h))
+    _set_default(txres, "txJust", txJust)
+    ngl.text_ndc(wks, res["lgLabelStrings"][iItem], *txy,
+                 rlistc=_dict2Resource(txres))
+
+
+def _lg_get_item_label_justification_position(res, (x, y), (w, h)):
+    invert_position = {"Left": "Right", "Bottom": "Top",
+                        "Right": "Left", "Top": "Bottom", "Center": "Center"}
+    if res["lgOrientation"][0].lower() == "v":
+        conv_align = {"ItemCenters": "Center", "AboveItems": "Bottom",
+                      "BelowItems": "Top"}
+        pos2just = dict((k, conv_align[res["lgLabelAlignment"]]
+                            + invert_position[k])
+                        for k in res["valid_positions"])
+    else:
+        conv_align = {"ItemCenters": "Center", "AboveItems": "Right",
+                      "BelowItems": "Left"}
+        pos2just = dict((k, invert_position[k]
+                            + conv_align[res["lgLabelAlignment"]])
+                        for k in res["valid_positions"])
+
+    if invert_position[res["lgLabelPosition"]] in ("Right", "Top"):
+        offset = -res["min_ax"] * res["lgLabelOffsetF"]
+    else:
+        offset = res["min_ax"] * res["lgLabelOffsetF"]
+    xy_coord = {"Left": (x + offset, y - h / 2),
+                "Right": (x + w + offset, y - h / 2.),
+                "Center": (x + w / 2., y - h / 2. + offset),
+                "Top": (x + w / 2., y + offset),
+                "Bottom": (x + w / 2., y - h + offset)}
+    return pos2just[res["lgLabelPosition"]], xy_coord[res["lgLabelPosition"]]
+
+
+def _set_custom_legend_defaults(rlist):
     ngl._set_legend_res(rlist, rlist)
-    defaults = {"lgBoxBackground": -1,
-                "lgBoxLineColor": 0,
-                "lgBoxLineDashPattern": 0,
-                "lgBoxLineDashSegLenF": 0.15,
-                "lgBoxLineThicknessF": 1.0,
+    defaults = {
+                "lgBoxBackground": -1,
+#                "lgBoxLineColor": 1,
+#                "lgBoxLineDashPattern": 0,
+#                "lgBoxLineDashSegLenF": 0.15,
+#                "lgBoxLineThicknessF": 1.0,
                 "lgBoxLinesOn": False,
                 "lgBoxMajorExtentF": .5,
-                "lgDashIndexes": [0 for l in labels],
-                "lgItemCount": len(labels),
-                "lgItemOrder": range(len(labels))[::-1],
-                "lgItemTypes": ["Lines" for l in labels],
+                "lgBoxMinorExtentF": .6,
+#                "lgDashIndexes": [0 for l in rlist["lgLabelStrings"]],
+                "lgItemCount": len(rlist["lgLabelStrings"]),
+                "lgItemOrder": range(len(rlist["lgLabelStrings"])),
+#                "lgItemTypes": ["Lines" for l in rlist["lgLabelStrings"]],
                 "lgLabelAlignment": "ItemCenters",
-                "lgLabelAngleF": 0.0,
-                "lgLabelConstantSpacingF": 0.0,
-                "lgLabelDirection": "Across",
-                "lgLabelFont": "pwritx",
-                "lgLabelFontAspectF": 1.0,
-                "lgLabelFontColor": 0,
-                "lgLabelFontHeightF": 0.02,
-                "lgLabelFontQuality": "High",
-                "lgLabelFontThicknessF": 1.0,
-                "lgLabelFuncCode": ":",
-                "lgLabelJust": "CentreCentre",
+#                "lgLabelAngleF": 0.0,
+#                "lgLabelConstantSpacingF": 0.0,
+#                "lgLabelDirection": "Across",
+#                "lgLabelFont": "pwritx",
+#                "lgLabelFontAspectF": 1.0,
+#                "lgLabelFontColor": 1,
+#                "lgLabelFontHeightF": 0.02,
+#                "lgLabelFontQuality": "High",
+#                "lgLabelFontThicknessF": 1.0,
+#                "lgLabelFuncCode": ":",
+#                "lgLabelJust": "CentreCentre",
                 "lgLabelOffsetF": 0.02,
                 "lgLabelPosition": "Right",
                 "lgLabelStride": 1,
                 "lgLabelsOn": True,
                 "lgLegendOn": True,
-                "lgLineColors": range(len(labels)) + 2,
-                "lgLineDashSegLenF": 0.15,
-                "lgLineLabelConstantSpacingF": 0.0,
-                "lgLineLabelFont": "pwritx",
-                "lgLineLabelFontAspectF": 1.0,
-                "lgLineLabelFontHeights": [0.01 for l in labels],
-                "lgLineLabelFontQuality": "High",
-                "lgLineLabelFontThicknessF": 1.0,
-                "lgLineLabelFuncCode": ":",
-                "lgLineLabelStrings": labels,
-                "lgLineLabelsOn": True,
-                "lgMarkerIndexes": [1 for l in labels],
+                "lgLineColors": range(2, len(rlist["lgLabelStrings"]) + 2),
+#                "lgLineDashSegLenF": 0.15,
+#                "lgLineLabelConstantSpacingF": 0.0,
+#                "lgLineLabelFont": "pwritx",
+#                "lgLineLabelFontAspectF": 1.0,
+                "lgLineLabelFontHeights": [0.01
+                                           for l in rlist["lgLabelStrings"]],
+#                "lgLineLabelFontQuality": "High",
+#                "lgLineLabelFontThicknessF": 1.0,
+#                "lgLineLabelFuncCode": ":",
+                "lgLineLabelStrings": rlist["lgLabelStrings"],
+                "lgLineLabelsOn": False,
+#                "lgMarkerIndexes": [1 for l in rlist["lgLabelStrings"]],
+                "lgMarkerColors": range(2, len(rlist["lgLabelStrings"]) + 2),
                 "lgOrientation": "Vertical",
-                "lgPerimColor": 0,
-                "lgPerimDashPattern": 0,
-                "lgPerimDashSegLenF": 0.15,
-                "lgPerimFill": "HollowFill",
-                "lgPerimFillColor": 1,
-                "lgPerimThicknessF": 1.0,
-                "lgTitleAngleF": 0.0,
-                "lgTitleConstantSpacingF": 0.0,
-                "lgTitleDirection": "Across",
+                "lgPerimOn": False,
+#                "lgPerimColor": 1,
+#                "lgPerimDashPattern": 0,
+#                "lgPerimDashSegLenF": 0.15,
+                "lgPerimFillColor": -1,
+#                "lgPerimThicknessF": 1.0,
+#                "lgTitleAngleF": 0.0,
+#                "lgTitleConstantSpacingF": 0.0,
+#                "lgTitleDirection": "Across",
                 "lgTitleExtentF": 0.15,
-                "lgTitleFont": "pwritx",
-                "lgTitleFontAspectF": 1.0,
-                "lgTitleFontColor": 0,
-                "lgTitleFontHeightF": .025,
-                "lgTitleFontQuality": "High",
-                "lgTitleFontThicknessF": 1.0,
-                "lgTitleFuncCode": ":",
-                "lgTitleJust": "CenterCenter",
+#                "lgTitleFont": "pwritx",
+#                "lgTitleFontAspectF": 1.0,
+#                "lgTitleFontColor": 1,
+#                "lgTitleFontHeightF": .025,
+#                "lgTitleFontQuality": "High",
+#                "lgTitleFontThicknessF": 1.0,
+#                "lgTitleFuncCode": ":",
+#                "lgTitleJust": "CenterCenter",
                 "lgTitleOffsetF": 0.03,
-                "lgTitleOn": True,
                 "lgTitlePosition": "Top",
                 "lgTitleString": "",
                 }
     for key, val in defaults.items():
         _set_default(rlist, key, val)
+    _set_default(rlist, "lgTitleOn", "lgTitleString" in rlist
+                    and rlist["lgTitleString"].strip())
     for key in ("Top", "Bottom", "Left",  "Right"):
         _set_default(rlist, "lg{}MarginF".format(key), .05)
     _set_mono_default(rlist, "lgMonoDashIndex", "lgDashIndex",
@@ -447,19 +625,19 @@ def _set_custom_legend_defaults(rlist, labels):
     _set_mono_default(rlist, "lgMonoItemType", "lgItemType",
                       "lgItemTypes", "Lines")
     _set_mono_default(rlist, "lgMonoLineColor", "lgLineColor",
-                      "lgLineColors", 0)
+                      "lgLineColors", 1)
     _set_mono_default(rlist, "lgMonoLineDashSegLen", "lgLineDashSegLenF",
                       "lgLineDashSegLens", 0.15)
     _set_mono_default(rlist, "lgMonoLineLabelFontColor",
-                      "lgLineLabelFontColor", "lgLineLabelFontColor", 0)
+                      "lgLineLabelFontColor", "lgLineLabelFontColors", 1)
     _set_mono_default(rlist, "lgMonoLineLabelFontHeight",
-                      "lgLineLabelFontHeight", "lgLineLabelFontHeights", 0.01)
+                      "lgLineLabelFontHeightF", "lgLineLabelFontHeights", 0.01)
     _set_mono_default(rlist, "lgMonoLineThickness", "lgLineThicknessF",
                       "lgLineThicknesses", 1.0)
     _set_mono_default(rlist, "lgMonoMarkerColor", "lgMarkerColor",
-                      "lgMarkerColors", 0)
+                      "lgMarkerColors", 1)
     _set_mono_default(rlist, "lgMonoMarkerIndex", "lgMarkerIndex",
-                      "lgMarkerIndexes", 1)
+                      "lgMarkerIndexes", 0)
     _set_mono_default(rlist, "lgMonoMarkerSize", "lgMarkerSizeF",
                       "lgMarkerSizes", 0.01)
     _set_mono_default(rlist, "lgMonoMarkerThickness", "lgMarkerThicknessF",
@@ -519,7 +697,6 @@ def lg_create_legend_nd(wks, labels, x, y, shape, rlist=None):
                 lres[key] = rlist[key][istart:iend]
         lres["lgItemCount"] = nItem
 
-        print xi, yi, nItem, labels[istart:iend]
         lg.append(ngl.legend_ndc(wks, nItem, labels[istart:iend],
                                  xi, yi, _dict2Resource(lres)))
         istart = iend
@@ -898,8 +1075,46 @@ def _set_default(rdic, attrib, val):
 
 
 def _set_mono_default(rdic, mono_attrib, single_attrib, arr_attrib, val):
-    if mono_attrib in rdic and rdic[mono_attrib]:
-        rdic[single_attrib] = val
-        rdic[arr_attrib] = [val for i in rlist["lgItemCount"]]
+    if not (single_attrib in rdic or mono_attrib in rdic or arr_attrib in rdic):
+        return
+    _set_default(rdic, single_attrib, val)
+    if arr_attrib not in rdic or (mono_attrib in rdic and rdic[mono_attrib]):
+        rdic[arr_attrib] = [rdic[single_attrib]
+                            for i in xrange(rdic["lgItemCount"])]
+
+
+def _plural2singular(word):
+    out = ""
+    dic = {"Colors": "Color",
+           "Lens": "LenF",
+           "Thicknesses": "ThicknessF",
+           "Heights": "HeightF",
+           "Indexes": "Index",
+           "Sizes": "SizeF",
+           "Strings": "String"}
+    istart = -1
+    for key, value in dic.items():
+        istart = word.rfind(key)
+        if not istart == -1:
+            out = word[:istart] + dic[key]
+            break
+    if not out:
+        raise ValueError("No plural defined for word '{}'".format(word))
     else:
-        rdic[mono_attrib] = False
+        return out
+
+
+def _xywh2corners((x, y), (w, h)):
+    return ((x, x + w, x + w, x, x), (y, y, y - h, y - h, y))
+
+
+def _filter_keys(dic, pattern, exceptions=(), falsepositive=""):
+    plen = len(pattern)
+    for key in (k[plen:] for k in dic.keys() if len(k) > plen
+                                             and k[:plen] == pattern):
+        if (falsepositive and len(key) >= len(falsepositive) and
+            key[:len(falsepositive)] == falsepositive):
+            continue
+        if exceptions and key in exceptions:
+            continue
+        yield key
