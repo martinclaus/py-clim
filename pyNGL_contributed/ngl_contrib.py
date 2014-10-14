@@ -121,6 +121,53 @@ def add_panel_label(wks, plot, panLabel="", factor=.05,
     ngl.text_ndc(wks, panLabel, *ul_edge, rlistc=_dict2Resource(tx_res))
 
 
+def add_axis(wks, plot, ax="XB", offset=0., res=None):
+    val_ax = ("XT", "XB", "YL", "YR")
+    if not res:
+        res = {}
+    else:
+        res = _resource2dict(res)
+    resp = {}
+    keys = ["vpXF", "vpYF", "vpWidthF", "vpHeightF", "trXMinF", "trXMaxF",
+            "trYMinF", "trYMaxF"]
+    for a in val_ax:
+        for k in ("LabelFontHeight", "MajorOutwardLength",
+                  "MinorOutwardLength"):
+            keys.append("tm{}{}F".format(a, k))
+    for k in keys:
+        resp[k] = ngl.get_float(plot, k)
+    for k in ("tm" + a + k for a in val_ax for k in ("Values", "MinorValues")):
+        resp[k] = ngl.get_float_array(plot, k)
+    for k in ("tm{}MinorPerMajor".format(a) for a in val_ax):
+        resp[k] = ngl.get_integer(plot, k)
+    for k in ("tm{}MinorOn".format(a) for a in val_ax):
+        resp[k] = (ngl.get_integer(plot, k) == 1)
+    for k in ("tm" + a + "Labels".format(a) for a in val_ax):
+        resp[k] = ngl.get_string_array(plot, k)
+    resp.update(res)
+
+    for a in ("XT", "XB", "YL", "YR"):
+        resp["tm{}Mode".format(a)] = "Explicit"
+        resp["tm{}On".format(a)] = (a == ax)
+        resp["tm{}BorderOn".format(a)] = (a == ax)
+
+    resp["nglDraw"] = False
+    resp["nglFrame"] = False
+
+    blank_plot = ngl.blank_plot(wks, _dict2Resource(resp))
+    amres = {"amJust": "CenterCenter"}
+    if ax[1].lower() in "lt":
+        ampos_sig = -1.
+    else:
+        ampos_sig = 1.
+    if ax[0].lower() == "x":
+        amres["amOrthogonalPosF"] = ampos_sig * offset
+    else:
+        amres["amParallelPosF"] = ampos_sig * offset
+
+    return ngl.add_annotation(plot, blank_plot, _dict2Resource(amres))
+
+
 def set_plot_position(plot, vpXY=None, vpWH=None):
     '''Change the viewport location and width. If one is omitted, the value
     will be retained.
